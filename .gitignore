@@ -1,0 +1,37 @@
+# ---- Segredos (NUNCA versionar) ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ---- Dados pessoais ----
+# nomes/zonas das suas câmeras (o modelo público é config.example.yaml)
+config.yaml
+# fotos e vídeos das câmeras
+snapshots/
+# banco de eventos e vídeos de teste
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.mp4
+*.avi
+*.mkv
+*.log
+
+# ---- Gerados / pesados ----
+models/
+*.pt
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# ---- Ferramentas locais ----
+.claude/
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

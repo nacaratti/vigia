@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vigia · Monitoramento</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23111418' stroke='%23f2a93b' stroke-width='3'/><circle cx='16' cy='16' r='5' fill='%23f2a93b'/></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <span class="olho" aria-hidden="true"></span>
+      <span>Vigia</span>
+      <span id="selo-teste" class="selo-teste" hidden>MODO TESTE</span>
+    </div>
+    <nav class="abas" role="tablist">
+      <button role="tab" data-aba="vivo" aria-selected="true">Ao vivo</button>
+      <button role="tab" data-aba="eventos">Eventos</button>
+      <button role="tab" data-aba="config">Configuração</button>
+      <button role="tab" data-aba="status">Status</button>
+    </nav>
+    <div class="topo-dir">
+      <span id="relogio" class="relogio mono"></span>
+      <button id="btn-armar" class="armar" aria-pressed="true">
+        <span class="luz"></span><span class="rotulo">Armado</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- AO VIVO -->
+    <section id="aba-vivo" class="aba ativa">
+      <div id="grade" class="grade"></div>
+    </section>
+
+    <!-- EVENTOS -->
+    <section id="aba-eventos" class="aba">
+      <div class="barra-filtros">
+        <label>Câmera <select id="f-camera"><option value="">Todas</option></select></label>
+        <label>Data <input type="date" id="f-data"></label>
+        <button id="f-limpar" class="btn fantasma">Limpar filtros</button>
+        <span id="ev-total" class="sutil"></span>
+        <span id="ev-uso" class="sutil"></span>
+        <button id="ev-selecionar" class="btn">Selecionar</button>
+      </div>
+      <div id="barra-selecao" class="barra-selecao" hidden>
+        <span id="sel-contagem">0 selecionados</span>
+        <button id="sel-todos" class="btn pequeno fantasma">Selecionar todos</button>
+        <span class="espaco"></span>
+        <button id="sel-apagar-videos" class="btn pequeno perigo">Apagar vídeos</button>
+        <button id="sel-apagar-eventos" class="btn pequeno perigo">Apagar eventos</button>
+        <button id="sel-cancelar" class="btn pequeno">Cancelar</button>
+      </div>
+      <div id="lista-eventos" class="eventos"></div>
+      <div class="centro"><button id="ev-mais" class="btn" hidden>Carregar mais</button></div>
+    </section>
+
+    <!-- CONFIGURAÇÃO -->
+    <section id="aba-config" class="aba">
+      <div id="aviso-teste-config" class="aviso" hidden>No modo de teste a configuração é só leitura.</div>
+      <div class="config-layout">
+        <aside class="lista-cams">
+          <h3>Câmeras</h3>
+          <div id="cfg-cams"></div>
+          <button id="cfg-add-cam" class="btn fantasma largo">+ Adicionar câmera</button>
+        </aside>
+
+        <div class="config-corpo">
+          <div id="cfg-camera" class="painel"></div>
+
+          <div class="painel">
+            <h2>Detecção <span class="sutil">· vale para todas as câmeras</span></h2>
+            <div class="campos" id="cfg-deteccao"></div>
+          </div>
+
+          <div class="painel">
+            <h2>Gravação de vídeo <span class="sutil">· quando uma pessoa é detectada</span></h2>
+            <div class="campos" id="cfg-gravacao"></div>
+          </div>
+        </div>
+      </div>
+      <div id="barra-salvar" class="barra-salvar" hidden>
+        <span>Alterações não salvas</span>
+        <span id="cfg-erro" class="erro"></span>
+        <button id="cfg-descartar" class="btn fantasma">Descartar</button>
+        <button id="cfg-salvar" class="btn primario">Salvar e aplicar</button>
+      </div>
+    </section>
+
+    <!-- STATUS -->
+    <section id="aba-status" class="aba">
+      <div class="cartoes" id="st-cartoes"></div>
+      <div class="painel">
+        <h2>Câmeras</h2>
+        <div class="tabela-rolagem"><table class="tabela" id="st-cams"></table></div>
+      </div>
+      <div class="painel">
+        <h2>Registro <span class="sutil">· últimas linhas de logs/monitor.log</span></h2>
+        <pre id="st-logs" class="logs mono"></pre>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="visor" class="visor">
+    <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+    <img id="visor-img" alt="">
+    <video id="visor-video" controls playsinline hidden></video>
+    <div class="visor-rodape">
+      <div id="visor-legenda" class="visor-legenda"></div>
+      <div id="visor-acoes" class="visor-acoes" hidden>
+        <button id="visor-apagar-video" class="btn pequeno perigo">Apagar vídeo</button>
+        <button id="visor-apagar-evento" class="btn pequeno perigo">Apagar evento</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

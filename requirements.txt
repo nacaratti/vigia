@@ -1,0 +1,14 @@
+# PyTorch só CPU (bem menor que a versão com CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+
+ultralytics==8.4.175
+opencv-python==5.0.0.93
+numpy==2.5.2
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+python-dotenv==1.2.4
+PyYAML==6.0.3
+requests==2.34.2
+psutil==7.2.2

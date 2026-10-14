@@ -1,0 +1,55 @@
+# Exemplo de configuração. Na primeira execução ele é copiado para config.yaml,
+# que é o arquivo usado (e editado pelo painel). O config.yaml não vai para o git.
+# Credenciais ficam SOMENTE no .env.
+
+dvr:
+  # {user} {password} {host} {port} vêm do .env; o endereço é sempre o CAM_HOST.
+  url_template: rtsp://{user}:{password}@{host}:{port}/cam/realmonitor?channel={channel}&subtype={subtype}
+  subtype: 0  # 0 = stream principal (melhor para detectar), 1 = secundário (mais leve)
+
+alertas:
+  telegram: false  # ligue depois de configurar o bot no .env
+
+gravacao:
+  ativo: true
+  pre_s: 5     # segundos gravados antes da detecção
+  pos_s: 10    # continua gravando após a pessoa sumir
+  max_s: 300
+
+deteccao:
+  modelo: yolo11s.pt       # baixado automaticamente em models/
+  confianca: 0.5
+  fps_analise: 1.0         # análises por segundo, por câmera
+  imgsz: 960
+  k: 2                     # dispara se houver pessoa em K...
+  n: 3                     # ...das últimas N análises
+  cooldown_s: 30           # mínimo entre mensagens no Telegram, por câmera
+  ausencia_s: 20           # sem ninguém por este tempo, a próxima aparição é um evento novo
+  filtro_movimento: true
+  movimento_min: 0.3
+  filtro_animal: true
+  limite_animal: 0.6
+
+cameras:
+  # Descubra os canais com vídeo rodando scripts/testar_rtsp.py
+  - id: cam1
+    nome: Câmera 1
+    canal: 1
+    ativo: true
+    # Horário em que o sistema arma sozinho (e desarma no fim).
+    # Dias: seg ter qua qui sex sab dom. inicio == fim = dia inteiro.
+    janelas:
+      - dias: [seg, ter, qua, qui, sex, sab, dom]
+        inicio: '22:00'
+        fim: '06:00'
+    # Zonas: desenhe pelo painel (aba Configuração). Vazio = imagem toda.
+    zonas: []
+  - id: cam2
+    nome: Câmera 2
+    canal: 2
+    ativo: true
+    janelas:
+      - dias: [seg, ter, qua, qui, sex, sab, dom]
+        inicio: '22:00'
+        fim: '06:00'
+    zonas: []
