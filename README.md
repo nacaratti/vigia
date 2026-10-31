@@ -165,4 +165,14 @@ O projeto foi feito para ficar **dentro da rede de casa**. Conhecer o código n�
 
 ## Licença
 
-MIT. Veja [LICENSE](LICENSE).
+Copyright (c) 2026 Davi Pontes Nacaratti
+
+[GNU AGPL-3.0](LICENSE). O Vigia usa o [Ultralytics YOLO](https://github.com/ultralytics/ultralytics), que é AGPL-3.0, e por isso o projeto inteiro segue a mesma licença.
+
+Na prática:
+
+- Você pode usar, estudar, modificar e redistribuir o Vigia, inclusive comercialmente.
+- Se distribuir uma versão modificada, ou oferecê-la a outras pessoas pela rede (por exemplo, um painel acessível a clientes), precisa disponibilizar o código-fonte dessa versão sob a AGPL-3.0.
+- Para usar sem essas condições, seria preciso uma licença comercial da Ultralytics ou trocar o detector por um modelo de licença permissiva.
+
+A primeira versão publicada (commit `47dd80a`, 13 de outubro de 2026) saiu como MIT; a partir desta, o projeto é AGPL-3.0.
