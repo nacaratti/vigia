@@ -9,6 +9,12 @@ PC com o Vigia ── rede local ── DVR (RTSP, porta 554) ── câmeras
 
 Tudo roda localmente: nenhuma imagem sai de casa, exceto as fotos de alerta enviadas ao seu Telegram.
 
+![Pessoa detectada dentro da zona do quintal, com a caixa "pessoa 89%"](docs/img/deteccao.jpg)
+
+**Por que não um sensor de movimento?** Em casa com cachorros e gatos, ele dispararia a noite toda. O Vigia reconhece os animais e os ignora; só uma **pessoa** dentro da área escolhida gera alerta.
+
+![Dois cachorros no jardim marcados em azul como animais, sem alerta](docs/img/pets-ignorados.jpg)
+
 ## Instalação (uma vez)
 
 ```powershell
@@ -71,6 +77,8 @@ Pelo terminal (vê o log na tela):
 ```
 
 ## Painel (http://127.0.0.1:8000)
+
+![Vídeo gravado de um evento no painel e o alerta com foto que chega ao celular](docs/img/painel-e-alerta.jpg)
 
 - **Ao vivo**: as câmeras em grade. As caixas vermelhas são pessoas dentro da zona; as cinzas estão fora da zona e são ignoradas; as azuis são cachorros e gatos (nunca alertam). "Testar detecção" roda o detector na hora, mesmo fora do horário.
 - **Eventos**: histórico com foto e vídeo, filtro por câmera e data, e o espaço ocupado pelos vídeos. Ao abrir um evento, você pode apagar só o **vídeo** (a foto e o registro ficam) ou o **evento** inteiro. Com **Selecionar** dá para apagar vários de uma vez. Sempre pede confirmação e não dá para desfazer.
@@ -174,5 +182,7 @@ Na prática:
 - Você pode usar, estudar, modificar e redistribuir o Vigia, inclusive comercialmente.
 - Se distribuir uma versão modificada, ou oferecê-la a outras pessoas pela rede (por exemplo, um painel acessível a clientes), precisa disponibilizar o código-fonte dessa versão sob a AGPL-3.0.
 - Para usar sem essas condições, seria preciso uma licença comercial da Ultralytics ou trocar o detector por um modelo de licença permissiva.
+
+As imagens de demonstração usam clipes livres da [Pexels](https://www.pexels.com/license/) (Sururi Ballıdağ e Anna Bondarenko), com as detecções e as telas geradas pelo próprio Vigia. Não mostram nenhuma casa real do autor.
 
 A primeira versão publicada (commit `47dd80a`, 13 de outubro de 2026) saiu como MIT; a partir desta, o projeto é AGPL-3.0.
