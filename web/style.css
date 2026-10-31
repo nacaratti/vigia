@@ -262,3 +262,66 @@ label { display: inline-flex; flex-direction: column; gap: 4px; color: var(--sut
   .lista-cams { position: static; }
   .tile-base { opacity: 1; }
 }
+
+/* ---------- sirene ---------- */
+.parar-sirene {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40;
+  font: 700 18px inherit; font-family: inherit; padding: 16px 32px; border-radius: 999px; cursor: pointer;
+  color: #fff; background: var(--vermelho); border: 0; box-shadow: 0 8px 30px #ff5c5c66;
+  animation: piscar 1s steps(2) infinite;
+}
+
+
+/* ---------- procurar câmeras ---------- */
+.busca { width: min(880px, 95vw); padding: 20px 22px; border: 1px solid var(--borda); border-radius: var(--raio);
+  background: var(--superficie); color: var(--texto); }
+.busca::backdrop { background: #000c; }
+.busca h2 { margin: 0 0 6px; font-size: 17px; }
+.busca .fechar { position: absolute; right: 10px; top: 8px; font-size: 24px; background: none; color: var(--sutil); border: 0; cursor: pointer; }
+.busca-lista { display: grid; gap: 8px; margin: 14px 0; }
+.aparelho { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; text-align: left; cursor: pointer;
+  background: var(--superficie-2); border: 1px solid var(--borda); border-radius: 8px; color: var(--texto); font: inherit; }
+.aparelho:hover { border-color: var(--ambar); }
+.aparelho .ip { font-family: var(--mono); font-weight: 600; min-width: 120px; }
+.aparelho .nome { flex: 1; color: var(--sutil); }
+.selo { font-size: 11px; padding: 2px 7px; border-radius: 99px; border: 1px solid var(--borda); color: var(--sutil); white-space: nowrap; }
+.selo.atual { color: var(--ambar); border-color: var(--ambar); }
+.busca-linha { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }
+.busca-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.busca-progresso { min-height: 1.5em; }
+.busca-progresso.carregando::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px;
+  border: 2px solid var(--borda); border-top-color: var(--ambar); border-radius: 50%; animation: girar .8s linear infinite; vertical-align: -1px; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.busca-canais { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.canal { border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; background: var(--superficie-2); }
+.canal.marcado { border-color: var(--ambar); }
+.canal.sem-sinal img { opacity: .45; }
+.canal img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #000; }
+.canal-corpo { display: grid; gap: 6px; padding: 8px 10px 10px; }
+.canal-corpo input[type="text"] { width: 100%; }
+@media (max-width: 600px) {
+  .busca { padding: 16px; }
+  .aparelho { flex-wrap: wrap; }
+}
+
+/* ---------- assistente ---------- */
+.assistente { width: min(720px, 95vw); }
+.passos { display: flex; gap: 6px; padding: 0; margin: 12px 0 18px; list-style: none; counter-reset: passo; }
+.passos li { flex: 1; counter-increment: passo; padding: 8px 10px; border-radius: 8px; background: var(--superficie-2);
+  color: var(--sutil); font-size: 13px; border: 1px solid transparent; }
+.passos li::before { content: counter(passo) ". "; font-weight: 600; }
+.passos li.atual { color: var(--texto); border-color: var(--ambar); }
+.passos li.feito { color: var(--verde); }
+.passos li.feito::before { content: "✓ "; }
+.estado-passo { padding: 12px 14px; border-radius: 8px; background: var(--superficie-2); border: 1px solid var(--borda); }
+.estado-passo.ok { border-color: color-mix(in srgb, var(--verde) 50%, var(--borda)); }
+.instrucoes { padding-left: 20px; margin: 8px 0 14px; display: grid; gap: 6px; }
+.assistente a { color: var(--ambar); }
+.busca-linha .cresce { flex: 1; min-width: 220px; }
+.busca-linha .cresce input { width: 100%; }
+.contato { display: flex; flex-direction: row; align-items: center; gap: 10px; color: var(--texto); font-size: 14px; padding: 9px 12px; border-radius: 8px; background: var(--superficie-2);
+  border: 1px solid var(--borda); cursor: pointer; }
+.contato input { width: 16px; height: 16px; accent-color: var(--ambar); }
+.contato .nome { flex: 1; }
+@media (max-width: 600px) { .passos li { font-size: 12px; padding: 6px; } }
+.acoes-cartao { display: flex; gap: 6px; flex-wrap: wrap; }

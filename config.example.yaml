@@ -10,6 +10,12 @@ dvr:
 alertas:
   telegram: false  # ligue depois de configurar o bot no .env
 
+sirene:
+  ativo: false      # toca nas caixas de som do PC quando uma pessoa fica na zona
+  atraso_s: 5       # segundos de presença na zona antes de tocar (0 = na hora)
+  duracao_s: 60     # para sozinha depois disso (ou: desarmar, botão no painel, /parar no Telegram)
+  voz: true
+
 gravacao:
   ativo: true
   pre_s: 5     # segundos gravados antes da detecção

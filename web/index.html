@@ -64,6 +64,8 @@
           <h3>Câmeras</h3>
           <div id="cfg-cams"></div>
           <button id="cfg-add-cam" class="btn fantasma largo">+ Adicionar câmera</button>
+          <button id="cfg-buscar" class="btn fantasma largo">🔍 Procurar câmeras</button>
+          <button id="cfg-assistente" class="btn fantasma largo">🧭 Assistente de instalação</button>
         </aside>
 
         <div class="config-corpo">
@@ -77,6 +79,11 @@
           <div class="painel">
             <h2>Gravação de vídeo <span class="sutil">· quando uma pessoa é detectada</span></h2>
             <div class="campos" id="cfg-gravacao"></div>
+          </div>
+
+          <div class="painel">
+            <h2>Sirene <span class="sutil">· toca nas caixas de som deste PC</span></h2>
+            <div class="campos" id="cfg-sirene"></div>
           </div>
         </div>
       </div>
@@ -115,6 +122,118 @@
     </div>
   </dialog>
 
+  <dialog id="assistente" class="busca assistente" aria-labelledby="assist-titulo">
+    <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+    <h2 id="assist-titulo">Configurar o Vigia</h2>
+    <ol class="passos" id="assist-passos">
+      <li data-passo="cameras">Câmeras</li>
+      <li data-passo="telegram">Alertas no Telegram</li>
+      <li data-passo="pronto">Pronto</li>
+    </ol>
+
+    <section id="assist-cameras">
+      <p>O Vigia observa as câmeras do seu gravador (DVR/NVR) ou câmeras IP pela rede de casa e avisa quando uma
+        <b>pessoa</b> entra nas áreas que você escolher. Cachorros e gatos são ignorados.</p>
+      <div class="estado-passo" id="assist-cameras-estado"></div>
+      <div class="busca-acoes">
+        <button id="assist-procurar" class="btn">🔍 Procurar câmeras</button>
+        <button id="assist-ir-telegram" class="btn primario">Próximo</button>
+      </div>
+    </section>
+
+    <section id="assist-telegram" hidden>
+      <div id="assist-tg-bot">
+        <p>Os alertas chegam com foto pelo <b>Telegram</b>, por um robô (bot) só seu. Para criar, leva 1 minuto:</p>
+        <ol class="instrucoes">
+          <li>No Telegram, abra o <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> e mande <code>/newbot</code>.</li>
+          <li>Escolha um nome (ex.: <i>Vigia Casa</i>) e um usuário terminado em <code>bot</code> (ex.: <i>vigia_casa_bot</i>).</li>
+          <li>Ele responde com um <b>token</b> (algo como <code>123456789:AAH...</code>). Cole aqui:</li>
+        </ol>
+        <div class="busca-linha">
+          <label class="cresce">Token do bot <input id="assist-token" type="password" autocomplete="off" spellcheck="false"></label>
+          <button id="assist-conectar" class="btn primario">Conectar</button>
+        </div>
+        <p class="dica">O token fica só no arquivo <code>.env</code> deste PC. Quem tiver o token controla o bot: não compartilhe.</p>
+      </div>
+
+      <div id="assist-tg-pessoas" hidden>
+        <p id="assist-tg-titulo"></p>
+        <p>Cada pessoa que vai receber os alertas abre <a id="assist-tg-link" target="_blank" rel="noopener"></a> no
+          Telegram, toca em <b>Iniciar</b> (ou manda um "oi") e aparece aqui embaixo:</p>
+        <div id="assist-tg-lista" class="busca-lista"></div>
+        <p class="busca-progresso carregando sutil">Aguardando mensagens...</p>
+        <p class="dica">Só as pessoas marcadas recebem alertas e podem armar, desarmar e ver as câmeras pelo bot.</p>
+        <div class="busca-acoes">
+          <button id="assist-trocar-bot" class="btn fantasma">Usar outro bot</button>
+          <button id="assist-salvar-tg" class="btn primario" disabled>Salvar</button>
+        </div>
+      </div>
+      <div class="busca-acoes">
+        <button id="assist-voltar-cameras" class="btn fantasma">Voltar</button>
+        <button id="assist-pular-tg" class="btn">Pular por enquanto</button>
+      </div>
+    </section>
+
+    <section id="assist-pronto" hidden>
+      <p><b>Tudo certo!</b> Faltam só os ajustes de cada câmera, na aba <b>Configuração</b>:</p>
+      <ul class="instrucoes">
+        <li><b>Zonas</b>: clique na imagem para desenhar a área vigiada (ex.: o quintal, sem a calçada). Sem zona, vale a imagem toda.</li>
+        <li><b>Horário</b>: por padrão o Vigia arma sozinho das 22:00 às 06:00. Pelo botão no topo (ou pelo Telegram) você arma quando quiser.</li>
+        <li><b>Sirene</b> (opcional): toca nas caixas de som do PC quando alguém fica na zona.</li>
+        <li><b>Testar detecção</b>: na aba Ao vivo, passe o mouse sobre uma câmera.</li>
+      </ul>
+      <div class="busca-acoes">
+        <button id="assist-concluir" class="btn primario">Desenhar as zonas</button>
+      </div>
+    </section>
+  </dialog>
+
+  <dialog id="busca" class="busca" aria-labelledby="busca-titulo">
+    <form method="dialog"><button class="fechar" aria-label="Fechar">×</button></form>
+    <h2 id="busca-titulo">Procurar câmeras</h2>
+
+    <!-- 1. aparelhos -->
+    <section id="busca-passo-aparelhos">
+      <p class="sutil">Gravadores (DVR/NVR) e câmeras IP na rede da sua casa. Funciona com Intelbras, Dahua, Hikvision,
+        XMeye e outros com RTSP; se o seu tiver <b>ONVIF</b>, ligue-o no menu de rede dele.</p>
+      <div id="busca-aparelhos" class="busca-lista"></div>
+      <div class="busca-linha">
+        <label>Não apareceu? IP ou rede
+          <input id="busca-rede" placeholder="192.168.1.0/24 ou 192.168.1.2" size="26"></label>
+        <button id="busca-procurar" class="btn">Procurar</button>
+      </div>
+    </section>
+
+    <!-- 2. acesso -->
+    <section id="busca-passo-acesso" hidden>
+      <div class="campos">
+        <label>IP do aparelho <input id="busca-host" size="16"></label>
+        <label>Porta RTSP <input id="busca-porta" type="number" min="1" max="65535" value="554"></label>
+        <label>Usuário <input id="busca-usuario" autocomplete="off" size="14"></label>
+        <label>Senha <input id="busca-senha" type="password" autocomplete="off" size="16"></label>
+      </div>
+      <p class="dica">Use o usuário e a senha do gravador (de preferência um usuário só de visualização). Muitos aparelhos
+        bloqueiam o usuário após algumas senhas erradas, por isso a busca para no primeiro erro. Os dados ficam só no
+        arquivo <code>.env</code> deste PC.</p>
+      <div class="busca-acoes">
+        <button id="busca-voltar" class="btn fantasma">Voltar</button>
+        <button id="busca-iniciar" class="btn primario">Buscar câmeras</button>
+      </div>
+    </section>
+
+    <!-- 3. canais -->
+    <section id="busca-passo-canais" hidden>
+      <p id="busca-progresso" class="busca-progresso"></p>
+      <div id="busca-canais" class="busca-canais"></div>
+      <p id="busca-aviso" class="dica" hidden></p>
+      <div class="busca-acoes">
+        <button id="busca-voltar2" class="btn fantasma">Voltar</button>
+        <button id="busca-aplicar" class="btn primario" disabled>Usar estas câmeras</button>
+      </div>
+    </section>
+  </dialog>
+
+  <button id="btn-parar-sirene" class="parar-sirene" hidden>🔕 Parar sirene</button>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/static/app.js"></script>
 </body>
