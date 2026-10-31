@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import config as cfgmod, descoberta, notificador
+from . import sirene as sirene_mod
 from .logs import buffer
 from .sistema import Sistema
 
@@ -123,6 +124,36 @@ def criar_app(sistema: Sistema, hosts_extras: tuple = ()) -> FastAPI:
         if not sistema.sirene.disparar(3, "teste pelo painel"):
             raise HTTPException(503, "sirene indisponível neste sistema")
         return {"ok": True}
+
+    @app.get("/api/sirene/sons")
+    def sirene_sons():
+        return {"sons": [{"id": k, "nome": n} for k, (n, _) in sirene_mod.OPCOES.items()],
+                "personalizado": sirene_mod.ARQ_PERSONALIZADO.exists()}
+
+    @app.get("/api/sirene/previa")
+    def sirene_previa(som: str, voz: bool = False):
+        """Uma volta do som para ouvir no navegador (não toca nas caixas do PC)."""
+        if som not in sirene_mod.OPCOES:
+            raise HTTPException(404)
+        if som == "personalizado" and not sirene_mod.ARQ_PERSONALIZADO.exists():
+            raise HTTPException(404, "nenhum arquivo enviado")
+        return Response(sirene_mod.wav_bytes(sirene_mod.montar(som, voz)), media_type="audio/wav",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/sirene/arquivo")
+    async def sirene_arquivo(request: Request):
+        """Corpo = o arquivo de áudio (até 15 MB). Vira o som 'Meu arquivo'."""
+        dados = await request.body()
+        if not dados or len(dados) > 15 * 2**20:
+            raise HTTPException(400, "Envie um arquivo de áudio de até 15 MB.")
+        try:
+            dur = await asyncio.to_thread(sirene_mod.salvar_personalizado, dados)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if sistema.cfg["sirene"]["som"] == "personalizado":
+            await asyncio.to_thread(sistema.sirene.configurar, "personalizado", sistema.cfg["sirene"]["voz"], True)
+        logging.getLogger("sirene").info("Som personalizado da sirene enviado pelo painel (%.1f s)", dur)
+        return {"duracao_s": round(dur, 1)}
 
     @app.post("/api/sirene/parar")
     def sirene_parar():

@@ -325,3 +325,5 @@ label { display: inline-flex; flex-direction: column; gap: 4px; color: var(--sut
 .contato .nome { flex: 1; }
 @media (max-width: 600px) { .passos li { font-size: 12px; padding: 6px; } }
 .acoes-cartao { display: flex; gap: 6px; flex-wrap: wrap; }
+.campo-botoes { display: flex; align-items: flex-end; gap: 8px; }
+.campo-botoes label.btn { display: inline-flex; flex-direction: row; cursor: pointer; color: var(--texto); font-size: 13px; }

@@ -123,10 +123,12 @@ As fotos do `/ver` vão só para quem pediu. Quando alguém arma ou desarma pelo
 
 Quando uma pessoa **continua na zona** por alguns segundos (com o sistema armado), o Vigia toca uma **sirene + aviso de voz** ("Atenção! Esta área é monitorada…") nas **caixas de som do PC**, em loop.
 
-- Configure em **Configuração → Sirene**: ligar/desligar, atraso (`atraso_s`, padrão 5 s) e duração máxima (`duracao_s`, padrão 60 s). O botão **Testar sirene** toca 3 s.
+- Configure em **Configuração → Sirene**: ligar/desligar, atraso (`atraso_s`, padrão 5 s) e duração máxima (`duracao_s`, padrão 60 s). O botão **Testar sirene** toca 3 s nas caixas do PC.
+- **Som** (`som`): alarme residencial (padrão), alarme contínuo, sirene de polícia, sirene de emergência, sintetizada, ou **o seu próprio arquivo** (MP3, WAV, M4A ou OGG, até 60 s), enviado pelo botão **Enviar meu arquivo**. Dá para gravar um aviso com a sua voz no celular e usar como sirene. **▶ Ouvir aqui** toca uma prévia no navegador.
+- **Aviso de voz** (`voz`): entre as sirenes, uma voz neural diz "Atenção! Esta área é monitorada. Você está sendo filmado, e o proprietário já foi avisado."
 - Para desligar: botão vermelho **"🔕 Parar sirene"** no painel, **desarmar** o sistema, ou pelo **Telegram** (botão na mensagem de alerta ou comando `/parar`).
 - O volume é o do Windows. Para ser ouvida de longe, ligue uma **caixa de som amplificada** perto da área vigiada.
-- O áudio é gerado no primeiro uso em `data/sirene.wav` (voz pt-BR do Windows, se instalada).
+- As sirenes são gravações reais em domínio público (Freesound, CC0) e a voz foi gerada com o Piper; detalhes em [assets/sons/CREDITOS.md](assets/sons/CREDITOS.md).
 
 ## Iniciar com o Windows
 

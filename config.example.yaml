@@ -14,7 +14,8 @@ sirene:
   ativo: false      # toca nas caixas de som do PC quando uma pessoa fica na zona
   atraso_s: 5       # segundos de presença na zona antes de tocar (0 = na hora)
   duracao_s: 60     # para sozinha depois disso (ou: desarmar, botão no painel, /parar no Telegram)
-  voz: true
+  som: residencial  # residencial, alarme, policia, emergencia, sintetizada ou personalizado (arquivo enviado pelo painel)
+  voz: true         # aviso de voz entre as sirenes
 
 gravacao:
   ativo: true
