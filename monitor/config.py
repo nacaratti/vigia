@@ -14,6 +14,8 @@ CONFIG_PATH = RAIZ / "config.yaml"
 load_dotenv(RAIZ / ".env")
 
 DIAS = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+# mesmas chaves de sirene.OPCOES (o primeiro é o padrão)
+SONS_SIRENE = ["residencial", "alarme", "policia", "emergencia", "sintetizada", "personalizado"]
 URL_PADRAO = "rtsp://{user}:{password}@{host}:{port}/cam/realmonitor?channel={channel}&subtype={subtype}"
 DETECCAO_PADRAO = {
     "modelo": "yolo11n.pt",
@@ -237,7 +239,10 @@ def validar(dados: dict) -> dict:
     sir = dados.get("sirene") or {}
     if not isinstance(sir, dict):
         raise ConfigError("sirene deve ser um objeto")
-    sirene = {"ativo": bool(sir.get("ativo", False)), "voz": bool(sir.get("voz", True))}
+    sirene = {"ativo": bool(sir.get("ativo", False)), "voz": bool(sir.get("voz", True)),
+              "som": str(sir.get("som") or SONS_SIRENE[0])}
+    if sirene["som"] not in SONS_SIRENE:
+        raise ConfigError(f"sirene.som deve ser um de: {', '.join(SONS_SIRENE)}")
     for chave, (padrao, mn, mx) in {"atraso_s": (5, 0, 120), "duracao_s": (60, 5, 900)}.items():
         try:
             v = int(sir.get(chave, padrao))

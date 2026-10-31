@@ -18,6 +18,8 @@ const estado = {
   selecionando: false,
   selecionados: new Set(),
   eventoAberto: null,      // evento mostrado no visualizador
+  sons: [],                // opções de som da sirene
+  temPersonalizado: false, // o usuário já enviou um arquivo próprio
 };
 
 // ---------- utilidades ----------
@@ -533,13 +535,24 @@ function renderDeteccao(ro) {
     el("label", { class: "toggle", style: "flex-basis:100%" },
       el("input", { type: "checkbox", checked: sr.ativo, onchange: (e) => setS("ativo")(e.target.checked) }),
       "Tocar a sirene quando uma pessoa ficar na zona"),
+    el("label", {}, "Som da sirene",
+      el("select", { onchange: (e) => { pararPrevia(); setS("som")(e.target.value); } },
+        estado.sons.map((s) => el("option", { value: s.id, selected: s.id === sr.som,
+          disabled: s.id === "personalizado" && !estado.temPersonalizado }, s.nome)))),
+    el("div", { class: "campo-botoes" },
+      el("button", { class: "btn pequeno", id: "btn-previa", onclick: () => ouvirPrevia(sr.som, sr.voz) }, "▶ Ouvir aqui"),
+      el("label", { class: "btn pequeno fantasma", title: "MP3, WAV, M4A ou OGG, até 15 MB e 60 s" }, "Enviar meu arquivo…",
+        el("input", { type: "file", accept: "audio/*", hidden: true, onchange: (e) => enviarSom(e.target.files[0]) }))),
+    el("label", { class: "toggle", style: "flex-basis:100%" },
+      el("input", { type: "checkbox", checked: sr.voz, onchange: (e) => { pararPrevia(); setS("voz")(e.target.checked); } }),
+      "Aviso de voz entre as sirenes (\"Atenção! Esta área é monitorada…\")"),
     campoNumero("Após quantos segundos na zona", sr.atraso_s, setS("atraso_s"), { min: 0, max: 120, dica: "0 = assim que o evento for confirmado. Alguns segundos evitam alarme falso." }),
     campoNumero("Tocar por até (s)", sr.duracao_s, setS("duracao_s"), { min: 5, max: 900, step: 5, dica: "Para sozinha depois disso. Também para ao desarmar, no botão vermelho ou pelo Telegram (/parar)." }),
     el("div", { style: "flex-basis:100%" },
       el("button", { class: "btn pequeno", onclick: testarSirene }, "🔊 Testar sirene (3 s)"),
       el("span", { class: "dica", style: "margin-left:10px" }, "O volume é o do Windows: deixe as caixas de som ligadas e altas.")),
   );
-  $$("#cfg-sirene input").forEach((i) => (i.disabled = ro));
+  $$("#cfg-sirene input, #cfg-sirene select").forEach((i) => (i.disabled = i.disabled || ro));
 }
 
 function adicionarCamera() {
@@ -879,6 +892,34 @@ async function carregarLogs() {
   } catch {}
 }
 
+// Prévia no navegador (não toca nas caixas do PC, a não ser que o painel esteja aberto nele)
+let previa = null;
+function pararPrevia() {
+  if (previa) { previa.pause(); previa = null; }
+  const b = $("#btn-previa");
+  if (b) b.textContent = "▶ Ouvir aqui";
+}
+function ouvirPrevia(som, voz) {
+  if (previa) return pararPrevia();
+  previa = new Audio(`/api/sirene/previa?som=${encodeURIComponent(som)}&voz=${voz ? "true" : "false"}&t=${Date.now()}`);
+  previa.addEventListener("ended", pararPrevia);
+  previa.play().catch((e) => { toast(`Não foi possível tocar a prévia: ${e.message}`, true); pararPrevia(); });
+  $("#btn-previa").textContent = "■ Parar";
+}
+
+async function enviarSom(arquivo) {
+  if (!arquivo) return;
+  try {
+    const r = await (await api("/api/sirene/arquivo", { method: "POST", body: arquivo, headers: { "Content-Type": "application/octet-stream" } })).json();
+    estado.temPersonalizado = true;
+    estado.rascunho.sirene.som = "personalizado";
+    renderConfig();
+    toast(`Arquivo recebido (${r.duracao_s} s). Clique em "Salvar e aplicar" para usá-lo na sirene.`);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 async function testarSirene() {
   try { await api("/api/sirene/testar", { method: "POST" }); toast("Sirene de teste: 3 segundos."); }
   catch (e) { toast(`Sirene: ${e.message}`, true); }
@@ -922,6 +963,11 @@ async function iniciar() {
   const dados = await (await api("/api/config")).json();
   estado.dias = dados.dias;
   estado.modoTeste = dados.modo_teste;
+  try {
+    const sons = await (await api("/api/sirene/sons")).json();
+    estado.sons = sons.sons;
+    estado.temPersonalizado = sons.personalizado;
+  } catch {}
   $("#selo-teste").hidden = !dados.modo_teste;
   aplicarConfig(dados.config);
 

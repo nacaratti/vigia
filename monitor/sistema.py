@@ -210,6 +210,7 @@ class Sistema:
         self.monitores: dict[str, MonitorCamera] = {}
         self._lock = threading.RLock()
         self.cfg = self._config_efetiva(cfgmod.carregar())
+        self.sirene.configurar(self.cfg["sirene"]["som"], self.cfg["sirene"]["voz"])
 
     def _config_efetiva(self, cfg: dict) -> dict:
         if not self.modo_teste:
@@ -443,6 +444,7 @@ class Sistema:
                     self._iniciar_camera(cam)
                 else:
                     mon.cam = cam  # horários, zonas, parâmetros: vale no próximo ciclo
+        self.sirene.configurar(novo["sirene"]["som"], novo["sirene"]["voz"])
         log.info("Configuração atualizada pelo painel")
         return novo
 
