@@ -44,7 +44,9 @@ LIMITES = {
 _HORA = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 # O destino da URL é sempre {host} (o CAM_HOST do .env): impede que alguém edite o modelo
 # pelo painel para mandar usuário/senha do DVR a um servidor de fora.
-_URL_TEMPLATE = re.compile(r"^rtsp://(\{user\}:\{password\}@)?\{host\}(:\{port\})?/[^@\s{}]*(\{channel\}|\{subtype\}|[^@\s{}])*$")
+# {user}/{password} também podem ir no caminho (formato XMeye); {stream} = subtype + 1 (Hikvision).
+_URL_TEMPLATE = re.compile(r"^rtsp://(\{user\}:\{password\}@)?\{host\}(:\{port\})?/[^@\s{}]*"
+                           r"(\{channel\}|\{subtype\}|\{stream\}|\{user\}|\{password\}|[^@\s{}])*$")
 _ID = re.compile(r"^[a-z0-9_-]{1,32}$")
 
 
@@ -76,6 +78,30 @@ def credenciais() -> dict:
         "host": os.getenv("CAM_HOST", ""),
         "port": os.getenv("CAM_RTSP_PORT", "554"),
     }
+
+
+def _valor_env(v: str) -> str:
+    if re.fullmatch(r"[^\s#'\"\\]*", v):
+        return v
+    if "'" not in v:
+        return f"'{v}'"  # aspas simples: o python-dotenv lê literalmente
+    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def atualizar_env(valores: dict[str, str], path: Path = RAIZ / ".env"):
+    """Grava/atualiza chaves no .env (mantém o resto do arquivo) e no ambiente atual."""
+    linhas = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    faltando = dict(valores)
+    for i, linha in enumerate(linhas):
+        chave = linha.split("=", 1)[0].strip()
+        if "=" in linha and not linha.lstrip().startswith("#") and chave in faltando:
+            linhas[i] = f"{chave}={_valor_env(faltando.pop(chave))}"
+    linhas += [f"{k}={_valor_env(v)}" for k, v in faltando.items()]
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".env.")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(linhas) + "\n")
+    os.replace(tmp, path)
+    os.environ.update(valores)
 
 
 def segredos() -> list[str]:
@@ -208,6 +234,18 @@ def validar(dados: dict) -> dict:
         if not mn <= v <= mx:
             raise ConfigError(f"gravacao.{chave} deve estar entre {mn} e {mx}")
         gravacao[chave] = v
+    sir = dados.get("sirene") or {}
+    if not isinstance(sir, dict):
+        raise ConfigError("sirene deve ser um objeto")
+    sirene = {"ativo": bool(sir.get("ativo", False)), "voz": bool(sir.get("voz", True))}
+    for chave, (padrao, mn, mx) in {"atraso_s": (5, 0, 120), "duracao_s": (60, 5, 900)}.items():
+        try:
+            v = int(sir.get(chave, padrao))
+        except (TypeError, ValueError):
+            raise ConfigError(f"sirene.{chave} inválido")
+        if not mn <= v <= mx:
+            raise ConfigError(f"sirene.{chave} deve estar entre {mn} e {mx}")
+        sirene[chave] = v
     alertas = dados.get("alertas") or {}
     if not isinstance(alertas, dict):
         raise ConfigError("alertas deve ser um objeto")
@@ -215,6 +253,7 @@ def validar(dados: dict) -> dict:
         "dvr": {"url_template": template, "subtype": subtype},
         "alertas": {"telegram": bool(alertas.get("telegram", True))},
         "gravacao": gravacao,
+        "sirene": sirene,
         "deteccao": _validar_deteccao(dados.get("deteccao") or {}, parcial=False),
         "cameras": cameras,
     }
@@ -266,6 +305,7 @@ def url_camera(cfg: dict, cam: dict) -> str:
         port=c["port"],
         channel=cam["canal"],
         subtype=cfg["dvr"]["subtype"],
+        stream=cfg["dvr"]["subtype"] + 1,
     )
 
 

@@ -375,6 +375,8 @@ function renderConfig() {
     el("button", { class: "item-cam" + (c.id === estado.camSel ? " sel" : ""), onclick: () => { estado.camSel = c.id; estado.zonaNova = []; renderConfig(); } },
       el("span", { class: "ponto" + (c.ativo ? "" : " inativo") }), c.nome)));
   $("#cfg-add-cam").hidden = ro;
+  $("#cfg-buscar").hidden = ro;
+  $("#cfg-assistente").hidden = ro;
 
   renderCamera(cams.find((c) => c.id === estado.camSel), ro);
   renderDeteccao(ro);
@@ -524,6 +526,20 @@ function renderDeteccao(ro) {
     campoNumero("Duração máxima (s)", g.max_s, setG("max_s"), { min: 10, max: 1800, step: 30 }),
   );
   $$("#cfg-gravacao input").forEach((i) => (i.disabled = ro));
+
+  const sr = estado.rascunho.sirene;
+  const setS = (k) => (v) => { sr[k] = v; marcarAlteracao(); };
+  $("#cfg-sirene").replaceChildren(
+    el("label", { class: "toggle", style: "flex-basis:100%" },
+      el("input", { type: "checkbox", checked: sr.ativo, onchange: (e) => setS("ativo")(e.target.checked) }),
+      "Tocar a sirene quando uma pessoa ficar na zona"),
+    campoNumero("Após quantos segundos na zona", sr.atraso_s, setS("atraso_s"), { min: 0, max: 120, dica: "0 = assim que o evento for confirmado. Alguns segundos evitam alarme falso." }),
+    campoNumero("Tocar por até (s)", sr.duracao_s, setS("duracao_s"), { min: 5, max: 900, step: 5, dica: "Para sozinha depois disso. Também para ao desarmar, no botão vermelho ou pelo Telegram (/parar)." }),
+    el("div", { style: "flex-basis:100%" },
+      el("button", { class: "btn pequeno", onclick: testarSirene }, "🔊 Testar sirene (3 s)"),
+      el("span", { class: "dica", style: "margin-left:10px" }, "O volume é o do Windows: deixe as caixas de som ligadas e altas.")),
+  );
+  $$("#cfg-sirene input").forEach((i) => (i.disabled = ro));
 }
 
 function adicionarCamera() {
@@ -561,6 +577,256 @@ function aplicarConfig(cfg) {
   renderConfig();
 }
 
+// ---------- procurar câmeras ----------
+
+const busca = { info: null, timer: null };
+
+function passoBusca(nome) {
+  for (const p of ["aparelhos", "acesso", "canais"]) $(`#busca-passo-${p}`).hidden = p !== nome;
+}
+
+async function abrirBusca() {
+  if (estado.modoTeste) return toast("No modo de teste a configuração é só leitura.", true);
+  if (sujo() && !confirm("Há alterações não salvas na configuração. Elas serão descartadas se você usar câmeras da busca. Continuar?")) return;
+  try {
+    busca.info = await (await api("/api/descoberta")).json();
+  } catch (e) {
+    return toast(e.message, true);
+  }
+  passoBusca("aparelhos");
+  $("#busca").showModal();
+  procurarAparelhos();
+}
+
+async function procurarAparelhos() {
+  const lista = $("#busca-aparelhos");
+  const btn = $("#busca-procurar");
+  btn.disabled = true;
+  lista.replaceChildren(el("p", { class: "busca-progresso carregando" }, "Procurando aparelhos na rede (cerca de 10 s)..."));
+  try {
+    const r = await (await api("/api/descoberta/aparelhos", { method: "POST", json: { rede: $("#busca-rede").value.trim() } })).json();
+    const itens = r.aparelhos.map((a) => el("button", { class: "aparelho", onclick: () => escolherAparelho(a.ip) },
+      el("span", { class: "ip" }, a.ip),
+      el("span", { class: "nome" }, a.nome || "Aparelho com vídeo (RTSP)"),
+      a.ip === busca.info.host ? el("span", { class: "selo atual" }, "configurado") : null,
+      a.onvif ? el("span", { class: "selo" }, "ONVIF") : null,
+      a.rtsp ? el("span", { class: "selo" }, "RTSP") : null));
+    lista.replaceChildren(...(itens.length ? itens : [el("p", { class: "sutil" },
+      "Nenhum aparelho encontrado. Se o gravador estiver em outra rede (atrás de outro roteador), informe o IP ou a rede abaixo.")]),
+      el("p", { class: "dica" }, `Redes verificadas: ${r.redes.join(", ")}`));
+  } catch (e) {
+    lista.replaceChildren(el("p", { class: "erro" }, e.message));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escolherAparelho(ip) {
+  const atual = ip === busca.info.host;
+  $("#busca-host").value = ip;
+  $("#busca-porta").value = atual ? busca.info.porta : 554;
+  $("#busca-usuario").value = atual ? busca.info.usuario : "";
+  $("#busca-senha").value = "";
+  $("#busca-senha").placeholder = atual && busca.info.tem_senha ? "(usar a senha já salva)" : "";
+  passoBusca("acesso");
+  (atual && busca.info.tem_senha ? $("#busca-iniciar") : $("#busca-usuario")).focus();
+}
+
+async function iniciarBuscaCanais() {
+  const corpo = {
+    host: $("#busca-host").value.trim(), porta: +$("#busca-porta").value || 554,
+    usuario: $("#busca-usuario").value.trim(), senha: $("#busca-senha").value,
+  };
+  try {
+    await api("/api/descoberta/canais", { method: "POST", json: corpo });
+  } catch (e) {
+    return toast(e.message, true);
+  }
+  $("#busca-senha").value = "";
+  $("#busca-canais").replaceChildren();
+  $("#busca-aviso").hidden = true;
+  $("#busca-aplicar").disabled = true;
+  passoBusca("canais");
+  acompanharBusca();
+}
+
+async function acompanharBusca() {
+  clearTimeout(busca.timer);
+  let st;
+  try {
+    st = await (await api("/api/descoberta/canais")).json();
+  } catch (e) {
+    $("#busca-progresso").textContent = e.message;
+    return;
+  }
+  const prog = $("#busca-progresso");
+  prog.className = "busca-progresso" + (st.fim ? "" : " carregando") + (st.erro ? " erro" : "");
+  prog.textContent = st.erro || (st.fim ? `${st.marca} · ${st.mensagem}` : st.mensagem || "Conectando...");
+  if (!st.fim) {
+    if ($("#busca").open) busca.timer = setTimeout(acompanharBusca, 700);
+    return;
+  }
+  if (!st.erro) mostrarCanais(st);
+}
+
+function mostrarCanais(st) {
+  const mesmo = st.host === busca.info.host;
+  const atuais = new Map(mesmo ? estado.config.cameras.filter((c) => c.fonte == null).map((c) => [c.canal, c]) : []);
+  const cartoes = st.canais.map((c) => {
+    const existente = atuais.get(c.canal);
+    const marcar = existente ? true : c.sinal;
+    const nome = el("input", { type: "text", value: existente?.nome || `Canal ${c.canal}`, "aria-label": `Nome do canal ${c.canal}` });
+    const caixa = el("input", { type: "checkbox", checked: marcar, onchange: () => { card.classList.toggle("marcado", caixa.checked); atualizarAplicar(); } });
+    const card = el("div", { class: "canal" + (marcar ? " marcado" : "") + (c.sinal ? "" : " sem-sinal"), "data-canal": c.canal },
+      el("img", { src: `/api/descoberta/miniatura/${c.canal}?t=${Date.now()}`, alt: `Canal ${c.canal}` }),
+      el("div", { class: "canal-corpo" },
+        el("label", { class: "toggle" }, caixa, `Canal ${c.canal}`,
+          c.sinal ? null : el("span", { class: "selo" }, "sem sinal"),
+          existente ? el("span", { class: "selo atual" }, "já configurada") : null),
+        nome));
+    return card;
+  });
+  $("#busca-canais").replaceChildren(...(cartoes.length ? cartoes : [el("p", { class: "sutil" }, "Nenhum canal com imagem.")]));
+  const aviso = $("#busca-aviso");
+  aviso.hidden = false;
+  aviso.textContent = mesmo
+    ? "Câmeras já configuradas mantêm zonas e horários. As desmarcadas saem da configuração (os eventos gravados continuam)."
+    : "Este aparelho substitui o atual: as câmeras de hoje serão trocadas pelas marcadas, que começam sem zonas (imagem toda) e com o horário 22:00–06:00.";
+  atualizarAplicar();
+}
+
+function atualizarAplicar() {
+  const n = $$("#busca-canais .canal.marcado").length;
+  $("#busca-aplicar").disabled = n === 0;
+  $("#busca-aplicar").textContent = n ? `Usar ${n} câmera${n > 1 ? "s" : ""}` : "Usar estas câmeras";
+}
+
+async function aplicarBusca() {
+  const cameras = $$("#busca-canais .canal.marcado").map((c) => ({ canal: +c.dataset.canal, nome: $("input[type=text]", c).value.trim() }));
+  const btn = $("#busca-aplicar");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/descoberta/aplicar", { method: "POST", json: { cameras } });
+    aplicarConfig((await r.json()).config);
+    if (assist.voltar) assist.voltar = "telegram";  // veio do assistente: segue para o próximo passo
+    $("#busca").close();
+    toast(`${cameras.length} câmera(s) configurada(s). Desenhe as zonas de cada uma.`);
+  } catch (e) {
+    toast(e.message, true);
+    btn.disabled = false;
+  }
+}
+
+// ---------- assistente de instalação ----------
+
+const assist = { info: null, timer: null, voltar: null, marcados: new Set() };
+
+async function abrirAssistente(passo = "cameras") {
+  if (estado.modoTeste) return toast("No modo de teste a configuração é só leitura.", true);
+  try {
+    assist.info = await (await api("/api/assistente")).json();
+  } catch (e) {
+    return toast(e.message, true);
+  }
+  if (!$("#assistente").open) $("#assistente").showModal();
+  passoAssistente(passo);
+}
+
+function passoAssistente(passo) {
+  clearTimeout(assist.timer);
+  const ordem = ["cameras", "telegram", "pronto"];
+  const { gravador, telegram } = assist.info;
+  const feito = { cameras: !!gravador.host && gravador.cameras > 0 && !assist.info.primeira_vez, telegram: telegram.destinatarios > 0 };
+  $$("#assist-passos li").forEach((li) => {
+    li.classList.toggle("atual", li.dataset.passo === passo);
+    li.classList.toggle("feito", li.dataset.passo !== passo && !!feito[li.dataset.passo]);
+  });
+  for (const p of ordem) $(`#assist-${p}`).hidden = p !== passo;
+
+  if (passo === "cameras") {
+    const box = $("#assist-cameras-estado");
+    box.className = "estado-passo" + (feito.cameras ? " ok" : "");
+    box.textContent = feito.cameras
+      ? `✓ ${gravador.cameras} câmera(s) do gravador ${gravador.host}. Pode procurar de novo para incluir ou trocar câmeras.`
+      : "Nenhum gravador configurado ainda. Clique em Procurar câmeras: o Vigia encontra o aparelho na rede e mostra as câmeras.";
+    $("#assist-procurar").classList.toggle("primario", !feito.cameras);
+    $("#assist-ir-telegram").classList.toggle("primario", feito.cameras);
+  }
+  if (passo === "telegram") {
+    $("#assist-token").value = "";
+    $("#assist-token").placeholder = telegram.bot ? `deixe em branco para manter @${telegram.bot}` : "123456789:AAH...";
+    $("#assist-tg-bot").hidden = false;
+    $("#assist-tg-pessoas").hidden = true;
+    $("#assist-pular-tg").textContent = feito.telegram ? "Próximo" : "Pular por enquanto";
+    if (telegram.bot) conectarBot();  // já configurado: vai direto para a lista de pessoas
+  }
+}
+
+async function conectarBot() {
+  const btn = $("#assist-conectar");
+  btn.disabled = true;
+  try {
+    const bot = await (await api("/api/assistente/telegram/bot", { method: "POST", json: { token: $("#assist-token").value.trim() } })).json();
+    $("#assist-token").value = "";
+    $("#assist-tg-titulo").textContent = `✓ Bot conectado: ${bot.nome} (@${bot.usuario})`;
+    const link = $("#assist-tg-link");
+    link.href = bot.link;
+    link.textContent = `t.me/${bot.usuario}`;
+    assist.marcados = new Set();
+    assist.carregado = false;
+    $("#assist-tg-lista").replaceChildren();
+    $("#assist-tg-bot").hidden = true;
+    $("#assist-tg-pessoas").hidden = false;
+    atualizarContatos();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function atualizarContatos() {
+  clearTimeout(assist.timer);
+  if (!$("#assistente").open || $("#assist-tg-pessoas").hidden) return;
+  try {
+    const { contatos } = await (await api("/api/assistente/telegram/contatos")).json();
+    if (!assist.carregado) contatos.filter((c) => c.autorizado).forEach((c) => assist.marcados.add(c.id));
+    assist.carregado = true;
+    $("#assist-tg-lista").replaceChildren(...contatos.map((c) => {
+      const caixa = el("input", { type: "checkbox", checked: assist.marcados.has(c.id), onchange: () => {
+        caixa.checked ? assist.marcados.add(c.id) : assist.marcados.delete(c.id);
+        $("#assist-salvar-tg").disabled = assist.marcados.size === 0;
+      } });
+      return el("label", { class: "contato" }, caixa, el("span", { class: "nome" }, c.nome),
+        el("span", { class: "selo" + (c.autorizado ? " atual" : "") }, c.autorizado ? "recebe alertas" : "nova mensagem"));
+    }));
+    $("#assist-salvar-tg").disabled = assist.marcados.size === 0;
+  } catch (e) {
+    toast(e.message, true);
+  }
+  assist.timer = setTimeout(atualizarContatos, 2500);
+}
+
+async function salvarTelegram() {
+  const btn = $("#assist-salvar-tg");
+  btn.disabled = true;
+  try {
+    const r = await (await api("/api/assistente/telegram/salvar", { method: "POST", json: { chat_ids: [...assist.marcados] } })).json();
+    aplicarConfig(r.config);
+    toast(r.novos ? `Pronto! ${r.novos} pessoa(s) receberam uma mensagem de boas-vindas no Telegram.` : "Destinatários salvos.");
+    assist.info = await (await api("/api/assistente")).json();
+    passoAssistente("pronto");
+  } catch (e) {
+    toast(e.message, true);
+    btn.disabled = false;
+  }
+}
+
+function concluirAssistente() {
+  $("#assistente").close();
+  trocarAba("config");
+}
+
 // ---------- status ----------
 
 function cartao(titulo, valor, detalhe, extra) {
@@ -573,6 +839,7 @@ function renderStatus() {
   if (!st) return;
   const tg = st.telegram;
   const btnTg = el("button", { class: "btn pequeno", onclick: testarTelegram }, "Enviar mensagem de teste");
+  const btnCfgTg = estado.modoTeste ? null : el("button", { class: "btn pequeno", onclick: () => abrirAssistente("telegram") }, "Configurar");
   $("#st-cartoes").replaceChildren(
     cartao("Estado", st.armado ? "Armado" : "Desarmado",
       st.erro_credenciais ? `⚠ ${st.erro_credenciais}` : `${st.armado_origem || "—"} · desde ${st.armado_desde}`),
@@ -580,7 +847,7 @@ function renderStatus() {
     cartao("Memória", `${st.memoria_mb} MB`, `ligado há ${fmtDuracao(st.uptime_s)}`),
     cartao("Modelo", st.modelo || "—", st.erro_modelo ? `erro: ${st.erro_modelo}` : "detecção de pessoas"),
     cartao("Telegram", !estado.config.alertas.telegram ? "Desligado" : tg.ativo ? "Ativo" : tg.configurado ? "Desligado" : "Não configurado",
-      tg.erro ? `último erro: ${tg.erro}` : `${tg.enviados} alerta(s) enviado(s) nesta sessão`, tg.configurado ? btnTg : null),
+      tg.erro ? `último erro: ${tg.erro}` : `${tg.enviados} alerta(s) enviado(s) nesta sessão`, el("span", { class: "acoes-cartao" }, tg.configurado ? btnTg : null, btnCfgTg)),
   );
   const cab = el("tr", {}, ["Câmera", "Conexão", "FPS", "Resolução", "Vigilância", "Movimento", "Análises (evitadas)", "Detecção K/N", "Pets confundidos", "Inferência", "Próx. mensagem", "Hoje", "Reconexões"].map((t) => el("th", {}, t)));
   const linhas = st.cameras.map((c) => el("tr", {},
@@ -612,6 +879,16 @@ async function carregarLogs() {
   } catch {}
 }
 
+async function testarSirene() {
+  try { await api("/api/sirene/testar", { method: "POST" }); toast("Sirene de teste: 3 segundos."); }
+  catch (e) { toast(`Sirene: ${e.message}`, true); }
+}
+
+async function pararSirene() {
+  try { await api("/api/sirene/parar", { method: "POST" }); toast("Sirene desligada."); } catch (e) { toast(e.message, true); }
+  atualizarStatus();
+}
+
 async function testarTelegram() {
   try {
     const r = await (await api("/api/telegram/teste", { method: "POST" })).json();
@@ -637,6 +914,7 @@ async function atualizarStatus() {
     (st.armado_origem ? ` (${st.armado_origem}, desde ${st.armado_desde}).` : ".") +
     "\nO horário de cada câmera arma e desarma sozinho; o botão vale até a próxima virada de horário.";
   atualizarTiles();
+  $("#btn-parar-sirene").hidden = !estado.status.sirene?.tocando;
   if (estado.aba === "status") renderStatus();
 }
 
@@ -649,6 +927,7 @@ async function iniciar() {
 
   $$(".abas button").forEach((b) => b.addEventListener("click", () => trocarAba(b.dataset.aba)));
   $("#btn-armar").addEventListener("click", alternarArmado);
+  $("#btn-parar-sirene").addEventListener("click", pararSirene);
   $("#f-camera").addEventListener("change", () => carregarEventos(true));
   $("#f-data").addEventListener("change", () => carregarEventos(true));
   $("#f-limpar").addEventListener("click", () => { $("#f-camera").value = ""; $("#f-data").value = ""; carregarEventos(true); });
@@ -669,6 +948,39 @@ async function iniciar() {
     if (await apagar([estado.eventoAberto.id], "evento")) $("#visor").close();
   });
   $("#cfg-add-cam").addEventListener("click", adicionarCamera);
+  $("#cfg-buscar").addEventListener("click", abrirBusca);
+  $("#busca-procurar").addEventListener("click", procurarAparelhos);
+  $("#busca-rede").addEventListener("keydown", (e) => { if (e.key === "Enter") procurarAparelhos(); });
+  $("#busca-voltar").addEventListener("click", () => passoBusca("aparelhos"));
+  $("#busca-voltar2").addEventListener("click", () => passoBusca("acesso"));
+  $("#busca-iniciar").addEventListener("click", iniciarBuscaCanais);
+  $("#busca-senha").addEventListener("keydown", (e) => { if (e.key === "Enter") iniciarBuscaCanais(); });
+  $("#busca-aplicar").addEventListener("click", aplicarBusca);
+  $("#busca").addEventListener("close", () => {
+    clearTimeout(busca.timer);
+    if (assist.voltar) { const p = assist.voltar; assist.voltar = null; abrirAssistente(p); }
+  });
+  $("#cfg-assistente").addEventListener("click", () => abrirAssistente());
+  $("#assist-procurar").addEventListener("click", async () => {
+    assist.voltar = "cameras";
+    $("#assistente").close();
+    await abrirBusca();
+    if (!$("#busca").open) { assist.voltar = null; abrirAssistente("cameras"); }
+  });
+  $("#assist-ir-telegram").addEventListener("click", () => passoAssistente("telegram"));
+  $("#assist-conectar").addEventListener("click", conectarBot);
+  $("#assist-token").addEventListener("keydown", (e) => { if (e.key === "Enter") conectarBot(); });
+  $("#assist-trocar-bot").addEventListener("click", () => {
+    clearTimeout(assist.timer);
+    $("#assist-tg-pessoas").hidden = true;
+    $("#assist-tg-bot").hidden = false;
+    $("#assist-token").focus();
+  });
+  $("#assist-salvar-tg").addEventListener("click", salvarTelegram);
+  $("#assist-voltar-cameras").addEventListener("click", () => passoAssistente("cameras"));
+  $("#assist-pular-tg").addEventListener("click", () => passoAssistente("pronto"));
+  $("#assist-concluir").addEventListener("click", concluirAssistente);
+  $("#assistente").addEventListener("close", () => clearTimeout(assist.timer));
   $("#cfg-salvar").addEventListener("click", salvarConfig);
   $("#cfg-descartar").addEventListener("click", () => { estado.rascunho = clone(estado.config); estado.zonaNova = []; renderConfig(); });
   window.addEventListener("beforeunload", (e) => { if (sujo()) e.preventDefault(); });
@@ -677,6 +989,7 @@ async function iniciar() {
   setInterval(atualizarStatus, 2000);
   setInterval(() => estado.aba === "status" && carregarLogs(), 4000);
   await atualizarStatus();
+  if (dados.primeira_vez) abrirAssistente();
 
   let aba = "vivo";
   try { aba = localStorage.getItem("aba") || "vivo"; } catch {}

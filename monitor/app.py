@@ -6,11 +6,12 @@ import logging
 import os
 
 import cv2
+import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import config as cfgmod
+from . import config as cfgmod, descoberta, notificador
 from .logs import buffer
 from .sistema import Sistema
 
@@ -77,9 +78,15 @@ def criar_app(sistema: Sistema, hosts_extras: tuple = ()) -> FastAPI:
 
     # --- configuração -------------------------------------------------------
 
+    def _primeira_vez() -> bool:
+        """Gravador ainda não configurado: o painel abre o assistente de instalação."""
+        c = cfgmod.credenciais()
+        return not sistema.modo_teste and (not c["host"] or c["password"] in ("", "troque-me"))
+
     @app.get("/api/config")
     def obter_config():
-        return {"config": sistema.cfg, "modo_teste": sistema.modo_teste, "dias": cfgmod.DIAS}
+        return {"config": sistema.cfg, "modo_teste": sistema.modo_teste, "dias": cfgmod.DIAS,
+                "primeira_vez": _primeira_vez()}
 
     @app.put("/api/config")
     async def salvar_config(request: Request):
@@ -111,6 +118,17 @@ def criar_app(sistema: Sistema, hosts_extras: tuple = ()) -> FastAPI:
     def logs(n: int = 150):
         return list(buffer.linhas)[-min(n, 300):]
 
+    @app.post("/api/sirene/testar")
+    def sirene_testar():
+        if not sistema.sirene.disparar(3, "teste pelo painel"):
+            raise HTTPException(503, "sirene indisponível neste sistema")
+        return {"ok": True}
+
+    @app.post("/api/sirene/parar")
+    def sirene_parar():
+        sistema.sirene.parar(quem="painel")
+        return {"ok": True}
+
     @app.post("/api/telegram/teste")
     async def telegram_teste():
         ok, msg = await asyncio.to_thread(sistema.telegram.enviar_texto, "✅ Teste do sistema de monitoramento")
@@ -140,6 +158,186 @@ def criar_app(sistema: Sistema, hosts_extras: tuple = ()) -> FastAPI:
         return Response(_jpeg(img, 85), media_type="image/jpeg", headers={
             "X-Pessoas-Zona": str(len(dentro)), "X-Pessoas-Fora": str(len(fora)), "Cache-Control": "no-store",
         })
+
+    # --- busca de câmeras (só no próprio PC: envolve a senha do gravador) --------
+
+    busca = {"atual": None}
+
+    def _so_local(request: Request):
+        if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
+            raise HTTPException(403, "A busca de câmeras só pode ser feita no próprio PC do Vigia.")
+
+    def _busca_ou_404() -> descoberta.BuscaCanais:
+        if busca["atual"] is None:
+            raise HTTPException(404, "nenhuma busca em andamento")
+        return busca["atual"]
+
+    @app.get("/api/descoberta")
+    def descoberta_info(request: Request):
+        _so_local(request)
+        c = cfgmod.credenciais()
+        return {"host": c["host"], "porta": int(c["port"] or 554), "usuario": c["user"],
+                "tem_senha": bool(c["password"]) and c["password"] != "troque-me",
+                "busca": busca["atual"].estado() if busca["atual"] else None}
+
+    @app.post("/api/descoberta/aparelhos")
+    async def descoberta_aparelhos(request: Request):
+        """{"rede": "192.168.1.0/24" (opcional)} -> aparelhos com vídeo encontrados."""
+        _so_local(request)
+        extras = []
+        try:
+            if rede := str((await request.json()).get("rede") or "").strip():
+                extras.append(descoberta.rede_permitida(rede))
+            if host := cfgmod.credenciais()["host"]:  # gravador já configurado (pode estar atrás de outro roteador)
+                extras.append(descoberta.rede_permitida(f"{host}/24"))
+        except ValueError as e:
+            if rede:
+                raise HTTPException(400, str(e))
+        aparelhos, redes = await asyncio.to_thread(descoberta.buscar_aparelhos, extras)
+        return {"aparelhos": aparelhos, "redes": [str(r) for r in redes]}
+
+    @app.post("/api/descoberta/canais")
+    async def descoberta_canais(request: Request):
+        """{"host", "porta", "usuario", "senha"}: senha vazia = a do .env (mesmo aparelho)."""
+        _so_local(request)
+        if busca["atual"] is not None and not busca["atual"].fim:
+            raise HTTPException(409, "já há uma busca em andamento")
+        corpo = await request.json()
+        host = str(corpo.get("host") or "").strip()
+        try:
+            if descoberta.rede_permitida(host).num_addresses != 1:
+                raise ValueError("Informe o IP do aparelho.")
+            porta = int(corpo.get("porta") or 554)
+            if not 1 <= porta <= 65535:
+                raise ValueError("Porta inválida.")
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, str(e))
+        c = cfgmod.credenciais()
+        usuario = str(corpo.get("usuario") or "").strip()
+        senha = str(corpo.get("senha") or "")
+        if not senha and host == c["host"] and usuario in ("", c["user"]):
+            usuario, senha = c["user"], c["password"]
+        if not usuario or not senha:
+            raise HTTPException(400, "Informe usuário e senha do aparelho.")
+        busca["atual"] = descoberta.BuscaCanais(host, porta, usuario, senha, mascarar=cfgmod.mascarar)
+        busca["atual"].thread.start()
+        return busca["atual"].estado()
+
+    @app.get("/api/descoberta/canais")
+    def descoberta_estado(request: Request):
+        _so_local(request)
+        return _busca_ou_404().estado()
+
+    @app.get("/api/descoberta/miniatura/{canal}")
+    def descoberta_miniatura(canal: int, request: Request):
+        _so_local(request)
+        jpg = _busca_ou_404().miniaturas.get(canal)
+        if not jpg:
+            raise HTTPException(404)
+        return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/descoberta/aplicar")
+    async def descoberta_aplicar(request: Request):
+        """{"cameras": [{"canal": 2, "nome": "Quintal"}, ...]}"""
+        _so_local(request)
+        b = _busca_ou_404()
+        if not b.fim or b.erro or not b.modelo:
+            raise HTTPException(409, "a busca não terminou com sucesso")
+        escolhidas = (await request.json()).get("cameras")
+        if not isinstance(escolhidas, list):
+            raise HTTPException(400, "informe as câmeras")
+        try:
+            novo = await asyncio.to_thread(sistema.aplicar_descoberta, b, escolhidas)
+        except (cfgmod.ConfigError, ValueError, TypeError, KeyError) as e:
+            raise HTTPException(400, str(e))
+        busca["atual"] = None  # não guarda a senha na memória além do necessário
+        return {"config": novo}
+
+    # --- assistente: Telegram (só no próprio PC: envolve o token do bot) ------------
+
+    assist = {"token": None, "bot": None, "offset": None, "contatos": {}, "nomes": {}}
+
+    def _mesmo_bot_escutando() -> bool:
+        return assist["token"] == sistema.telegram.token and sistema.telegram.escutando
+
+    def _nomes_atuais() -> dict[str, str]:
+        """Nome de cada destinatário já configurado (cache; o .env só guarda os números)."""
+        tg = sistema.telegram
+        for cid in tg.chat_ids:
+            if cid not in assist["nomes"]:
+                try:
+                    r = requests.get(notificador.API.format(token=tg.token, metodo="getChat"),
+                                     params={"chat_id": cid}, timeout=10)
+                    assist["nomes"][cid] = notificador.nome_chat(r.json().get("result") or {}) if r.ok else "?"
+                except (requests.RequestException, ValueError):
+                    return {c: assist["nomes"].get(c, "?") for c in tg.chat_ids}
+        return {c: assist["nomes"][c] for c in tg.chat_ids}
+
+    @app.get("/api/assistente")
+    async def assistente_info(request: Request):
+        _so_local(request)
+        c, tg = cfgmod.credenciais(), sistema.telegram
+        bot = None
+        if tg.token:
+            try:
+                bot = (await asyncio.to_thread(notificador.info_bot, tg.token))["usuario"]
+            except (ValueError, requests.RequestException):
+                pass
+        return {"primeira_vez": _primeira_vez(), "modo_teste": sistema.modo_teste,
+                "gravador": {"host": c["host"], "cameras": sum(1 for x in sistema.cfg["cameras"] if not x.get("fonte"))},
+                "telegram": {"bot": bot, "destinatarios": len(tg.chat_ids), "ligado": sistema.cfg["alertas"]["telegram"]}}
+
+    @app.post("/api/assistente/telegram/bot")
+    async def assistente_bot(request: Request):
+        """{"token": "..."}: vazio = o bot já configurado."""
+        _so_local(request)
+        token = str((await request.json()).get("token") or "").strip() or sistema.telegram.token
+        if not token:
+            raise HTTPException(400, "Cole o token que o @BotFather mandou.")
+        try:
+            bot = await asyncio.to_thread(notificador.info_bot, token)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        assist.update(token=token, bot=bot, offset=None, contatos={})
+        return {"usuario": bot["usuario"], "nome": bot["nome"], "link": f"https://t.me/{bot['usuario']}",
+                "mesmo_bot": token == sistema.telegram.token}
+
+    @app.get("/api/assistente/telegram/contatos")
+    async def assistente_contatos(request: Request):
+        """Quem já recebe os alertas + quem mandou mensagem ao bot (para autorizar)."""
+        _so_local(request)
+        if not assist["token"]:
+            raise HTTPException(404, "conecte o bot primeiro")
+        if _mesmo_bot_escutando():
+            assist["contatos"].update(sistema.telegram.desconhecidos)
+        else:
+            try:
+                novos, assist["offset"] = await asyncio.to_thread(notificador.ler_contatos, assist["token"], assist["offset"])
+            except ValueError as e:
+                raise HTTPException(409, str(e))
+            except requests.RequestException:
+                raise HTTPException(503, "sem conexão com o Telegram")
+            assist["contatos"].update(novos)
+        atuais = await asyncio.to_thread(_nomes_atuais) if assist["token"] == sistema.telegram.token else {}
+        itens = [{"id": cid, "nome": nome, "autorizado": True} for cid, nome in atuais.items()]
+        itens += [{"id": cid, "nome": nome, "autorizado": False} for cid, nome in assist["contatos"].items() if cid not in atuais]
+        return {"contatos": itens}
+
+    @app.post("/api/assistente/telegram/salvar")
+    async def assistente_salvar(request: Request):
+        """{"chat_ids": ["111", ...]}: a lista completa de quem recebe os alertas."""
+        _so_local(request)
+        if not assist["token"]:
+            raise HTTPException(404, "conecte o bot primeiro")
+        ids = [str(i).strip() for i in (await request.json()).get("chat_ids") or []]
+        conhecidos = set(assist["contatos"]) | (set(sistema.telegram.chat_ids) if assist["token"] == sistema.telegram.token else set())
+        if not ids:
+            raise HTTPException(400, "Escolha pelo menos uma pessoa para receber os alertas.")
+        if any(i not in conhecidos for i in ids):
+            raise HTTPException(400, "Só é possível escolher quem já mandou mensagem ao bot.")
+        novos = await asyncio.to_thread(sistema.configurar_telegram, assist["token"], list(dict.fromkeys(ids)))
+        assist.update(token=None, offset=None, contatos={})
+        return {"destinatarios": len(ids), "novos": len(novos), "config": sistema.cfg}
 
     # --- eventos ------------------------------------------------------------
 
